@@ -1,18 +1,3 @@
-"""
-FBI Wanted Search — Backend FastAPI + uvicorn  v4
-=================================================
-Avvio:  python main.py
-Oppure: uvicorn main:app --reload --port 8000
-
-Frontend  → http://127.0.0.1:8000
-API docs  → http://127.0.0.1:8000/docs
-
-Database  → fbi_search.db  (SQLite, creato automaticamente nella stessa cartella)
-            Utenti e report vengono persistiti su disco: nessun dato viene perso
-            al riavvio del server.
-            Le sessioni (token Bearer) rimangono in memoria: al riavvio del server
-            sarà sufficiente effettuare nuovamente il login.
-"""
 
 import re
 import uuid
@@ -31,9 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  App
-# ══════════════════════════════════════════════════════════════════════════════
+
 app = FastAPI(title="FBI Wanted Search API", version="4.0.0")
 
 app.add_middleware(
@@ -53,9 +36,6 @@ HEADERS  = {
     ),
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Database SQLite
-# ══════════════════════════════════════════════════════════════════════════════
 DB_PATH = Path(__file__).parent / "fbi_search.db"
 
 def get_conn() -> sqlite3.Connection:
@@ -112,14 +92,10 @@ def init_db() -> None:
         """)
     print(f"✅  Database pronto: {DB_PATH}")
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Sessioni (in memoria)
-# ══════════════════════════════════════════════════════════════════════════════
+
 sessions: dict[str, str] = {}
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Modelli Pydantic
-# ══════════════════════════════════════════════════════════════════════════════
+
 class RegisterRequest(BaseModel):
     username: str
     email:    str
@@ -147,9 +123,7 @@ class SightingReport(BaseModel):
     date_seen:        Optional[str] = None
     notes:            Optional[str] = None
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Helpers: auth
-# ══════════════════════════════════════════════════════════════════════════════
+
 def hash_password(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
@@ -164,9 +138,7 @@ def require_user(authorization: str | None) -> str:
         raise HTTPException(401, "Non autenticato. Effettua il login.")
     return u
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Helpers: DB utenti
-# ══════════════════════════════════════════════════════════════════════════════
+
 def db_get_user(username_lower: str) -> dict | None:
     with db() as conn:
         row = conn.execute(
@@ -190,9 +162,7 @@ def db_create_user(username_lower, username, email, password_hash, created_at):
             (username_lower, username, email, password_hash, created_at),
         )
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Helpers: DB report
-# ══════════════════════════════════════════════════════════════════════════════
+
 def db_save_report(username_lower: str, r: dict) -> None:
     with db() as conn:
         conn.execute(
@@ -235,9 +205,7 @@ def db_get_reports(username_lower: str) -> list[dict]:
         result.append(d)
     return result
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Helpers: FBI API
-# ══════════════════════════════════════════════════════════════════════════════
+
 def parse_age_range(age_range: str | None) -> tuple[int | None, int | None]:
     if not age_range:
         return None, None
@@ -294,16 +262,11 @@ async def fetch_fbi(params: dict) -> list[dict]:
         resp.raise_for_status()
         return resp.json().get("items", [])
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Startup
-# ══════════════════════════════════════════════════════════════════════════════
+
 @app.on_event("startup")
 async def startup_event():
     init_db()
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Frontend
-# ══════════════════════════════════════════════════════════════════════════════
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def frontend():
     path = Path(__file__).parent / "index.html"
@@ -311,9 +274,7 @@ async def frontend():
         raise HTTPException(404, "index.html non trovato.")
     return HTMLResponse(content=path.read_text(encoding="utf-8"))
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Auth
-# ══════════════════════════════════════════════════════════════════════════════
+
 @app.post("/auth/register")
 async def register(req: RegisterRequest):
     username = req.username.strip()
@@ -375,9 +336,7 @@ async def me(authorization: str | None = Header(None)):
     return {"username": user["username"], "email": user["email"],
             "created_at": user["created_at"], "reports": len(db_get_reports(key))}
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Report history
-# ══════════════════════════════════════════════════════════════════════════════
+
 @app.get("/reports/my")
 async def my_reports(authorization: str | None = Header(None)):
     key  = require_user(authorization)
@@ -386,9 +345,7 @@ async def my_reports(authorization: str | None = Header(None)):
         raise HTTPException(404, "Utente non trovato.")
     return {"username": user["username"], "reports": db_get_reports(key)}
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Search
-# ══════════════════════════════════════════════════════════════════════════════
+
 @app.get("/search")
 async def search(
     title:         Optional[str] = Query(None),
@@ -427,9 +384,7 @@ async def search(
     return {"total": total, "page": page, "results": len(items),
             "items": [clean_item(i) for i in items]}
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Sighting
-# ══════════════════════════════════════════════════════════════════════════════
+
 @app.post("/sighting")
 async def sighting(
     report:        SightingReport,
@@ -557,9 +512,7 @@ async def sighting(
         "matches":   results,
     }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Avvio
-# ══════════════════════════════════════════════════════════════════════════════
+
 if __name__ == "__main__":
     print("\n🔎  FBI Wanted Search  v4")
     print(f"    Database  → {DB_PATH}")
